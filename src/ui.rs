@@ -44,10 +44,10 @@ fn handle_keypress(
         let c = keyval.chars().next().unwrap();
         if c.is_alphabetic() && c.is_lowercase() {
             if let Some(&con_id) = keys_to_con_ids.get(&c) {
-                match command {
+                return match command {
                     Command::Focus => {
                         sway::focus(conn, con_id)?;
-                        return Ok(Some(c));
+                        Ok(Some(c))
                     }
                     Command::Swap { focus } => {
                         sway::swap(conn, con_id)?;
@@ -55,11 +55,11 @@ fn handle_keypress(
                         if focus {
                             sway::focus(conn, con_id)?;
                         }
-                        return Ok(Some(c));
+                        Ok(Some(c))
                     }
                     Command::Print => {
                         println!("{}", con_id);
-                        return Ok(Some(c));
+                        Ok(Some(c))
                     }
                 }
             }
@@ -69,7 +69,7 @@ fn handle_keypress(
 }
 
 fn handle_confirmation(windows: &[gtk4::ApplicationWindow], c: char) {
-    for window in windows.as_ref() {
+    for window in windows {
         if let Some(fixed) = window
             .child()
             .and_then(|c| c.downcast::<gtk4::Fixed>().ok())
@@ -127,7 +127,7 @@ fn create_key_controller(
 
             Propagation::Stop
         } else {
-            glib::Propagation::Proceed
+            Propagation::Proceed
         }
     });
 
