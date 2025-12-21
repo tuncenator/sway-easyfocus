@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use clap::Parser;
@@ -14,38 +13,15 @@ mod sway;
 mod ui;
 mod util;
 
-struct Lockfile {
-    path: PathBuf,
-}
+fn obtain_lock() -> File {
+    let mut path = std::env::temp_dir();
+    path.push("sway-easyfocus-lockfile");
 
-impl Drop for Lockfile {
-    fn drop(&mut self) {
-        std::fs::remove_file(&self.path).expect(&format!(
-            "Failed to remove lockfile at {}.",
-            &self.path.display()
-        ));
-    }
-}
+    let file = File::create(path).expect("failed to open the lockfile");
+    file.try_lock()
+        .expect("failed to lock the lockfile (is another instance running?)");
 
-impl Lockfile {
-    pub fn new() -> Self {
-        use std::env;
-
-        let mut lock_path = env::var("TMPDIR").map_or(PathBuf::from("/tmp"), |dir| {
-            let tentative_dir = Path::new(&dir);
-            if tentative_dir.is_dir() {
-                PathBuf::from(tentative_dir)
-            } else {
-                eprintln!("[$TMPDIR] is not a directory! Falling back to [/tmp].");
-                PathBuf::from("/tmp")
-            }
-        });
-
-        lock_path.push("sway-easyfocus-lockfile");
-        File::create_new(&lock_path)
-            .map(move |_| Self { path: lock_path })
-            .expect("Lockfile exists! (Is another instance running?)")
-    }
+    file
 }
 
 fn read_options() -> Rc<Options> {
@@ -70,12 +46,12 @@ fn read_options() -> Rc<Options> {
 }
 
 fn main() {
-    let _ = Lockfile::new();
-
     let opts = read_options();
 
+    let lockfile = obtain_lock();
     match swayipc::Connection::new() {
         Ok(conn) => ui::run_ui(conn, opts),
         Err(_) => eprintln!("Failed to connect to sway."),
     }
+    lockfile.unlock().expect("failed to unlock the lockfile");
 }
