@@ -183,6 +183,15 @@ fn build_ui(
         if let Some(workspace) = sway::find_focused_workspace(output) {
             let client_windows = sway::get_all_windows(&workspace);
 
+            // Crop the label box to glyph-only height so text sits flush
+            // against the top edge instead of inheriting Pango's full line
+            // box (ascent + descent + leading).
+            let font_px: i32 = opts
+                .font_size
+                .strip_suffix("px")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(14);
+
             // Create labels for windows
             for client in client_windows.iter() {
                 let (x, y) = calculate_geometry(client, &output, opts);
@@ -192,8 +201,9 @@ fn build_ui(
 
                 label.set_markup(&format!("{}", letter));
 
-                label.set_halign(gtk4::Align::Center);
-                label.set_valign(gtk4::Align::Center);
+                label.set_xalign(0.0);
+                label.set_yalign(0.0);
+                label.set_size_request(-1, font_px);
 
                 fixed.put(&label, x as f64, y as f64);
 
