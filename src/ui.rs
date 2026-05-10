@@ -14,21 +14,20 @@ fn calculate_geometry(
     window: &swayipc::Node,
     output: &swayipc::Node,
     opts: &Options,
+    label_w: i32,
+    label_h: i32,
 ) -> (i32, i32) {
     let rect = window.rect;
     let window_rect = window.window_rect;
-    let deco_rect = window.deco_rect;
 
     let anchor_x = output.rect.x;
     let anchor_y = output.rect.y;
 
-    let rel_x = rect.x + window_rect.x + deco_rect.x + opts.label_margin_x;
-    let rel_y = rect.y - (deco_rect.height - opts.label_margin_y)
-        + if window.layout == swayipc::NodeLayout::Stacked {
-            deco_rect.y
-        } else {
-            0
-        };
+    let center_x = rect.x + window_rect.x + window_rect.width / 2;
+    let center_y = rect.y + window_rect.y + window_rect.height / 2;
+
+    let rel_x = center_x - label_w / 2 + opts.label_margin_x;
+    let rel_y = center_y - label_h / 2 + opts.label_margin_y;
 
     (rel_x - anchor_x, rel_y - anchor_y)
 }
@@ -42,7 +41,7 @@ fn handle_keypress(
     if keyval.len() == 1 {
         // we can unwrap because keyval has length 1
         let c = keyval.chars().next().unwrap();
-        if c.is_alphabetic() && c.is_lowercase() {
+        if c.is_alphanumeric() {
             if let Some(&con_id) = keys_to_con_ids.get(&c) {
                 return match command {
                     Command::Focus => {
@@ -191,7 +190,6 @@ fn build_ui(
 
             // Create labels for windows
             for client in client_windows.iter() {
-                let (x, y) = calculate_geometry(client, &output, opts);
                 let label = gtk4::Label::new(Some(""));
 
                 let letter = chars.next().ok_or(Error::OutOfCharsError)?;
@@ -201,11 +199,16 @@ fn build_ui(
                 label.set_halign(gtk4::Align::Center);
                 label.set_valign(gtk4::Align::Center);
 
-                fixed.put(&label, x as f64, y as f64);
-
                 if client.focused {
                     label.add_css_class("focused");
                 }
+
+                fixed.put(&label, 0.0, 0.0);
+
+                let (_, label_w, _, _) = label.measure(gtk4::Orientation::Horizontal, -1);
+                let (_, label_h, _, _) = label.measure(gtk4::Orientation::Vertical, -1);
+                let (x, y) = calculate_geometry(client, &output, opts, label_w, label_h);
+                fixed.move_(&label, x as f64, y as f64);
 
                 keys_to_con_ids.insert(letter, client.id);
             }
