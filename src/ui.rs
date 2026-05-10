@@ -5,8 +5,9 @@ use gtk4::{
     gdk::prelude::{DisplayExt, MonitorExt},
     gio::prelude::{ApplicationExt, ApplicationExtManual, ListModelExt},
     glib::{self, ControlFlow, Propagation, object::Cast},
-    prelude::{FixedExt, GtkWindowExt, WidgetExt},
+    prelude::{DrawingAreaExtManual, FixedExt, GtkWindowExt, WidgetExt},
 };
+use pango::prelude::FontMapExt;
 
 use crate::{cli::Command, options::Options, sway};
 
@@ -183,33 +184,80 @@ fn build_ui(
         if let Some(workspace) = sway::find_focused_workspace(output) {
             let client_windows = sway::get_all_windows(&workspace);
 
-            // Crop the label box to glyph-only height so text sits flush
-            // against the top edge instead of inheriting Pango's full line
-            // box (ascent + descent + leading).
+            // Build a Pango font description so DrawingArea labels can be
+            // sized and rendered to a tight ink-rect bounding box. Default
+            // font_size to 14 if unparseable as <N>px.
             let font_px: i32 = opts
                 .font_size
                 .strip_suffix("px")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(14);
+            let font_desc_str =
+                format!("{} {} {}", opts.font_family, opts.font_weight, font_px);
+            let base_font_desc = pango::FontDescription::from_string(&font_desc_str);
 
             // Create labels for windows
             for client in client_windows.iter() {
                 let (x, y) = calculate_geometry(client, &output, opts);
-                let label = gtk4::Label::new(Some(""));
 
                 let letter = chars.next().ok_or(Error::OutOfCharsError)?;
+                let letter_str = letter.to_string();
 
-                label.set_markup(&format!("{}", letter));
+                // Compute the glyph's ink rect using a temporary layout so we
+                // can size the DrawingArea exactly to the visible glyph.
+                let temp_ctx = pangocairo::FontMap::default().create_context();
+                let temp_layout = pango::Layout::new(&temp_ctx);
+                temp_layout.set_text(&letter_str);
+                temp_layout.set_font_description(Some(&base_font_desc));
+                let (ink, _logical) = temp_layout.pixel_extents();
+                let area_w = ink.width().max(1);
+                let area_h = ink.height().max(1);
+                let ink_x = ink.x();
+                let ink_y = ink.y();
 
-                label.set_xalign(0.0);
-                label.set_yalign(0.0);
-                label.set_size_request(-1, font_px);
+                let (bg, bg_a, fg) = if client.focused {
+                    (
+                        opts.focused_background_color,
+                        opts.focused_background_opacity,
+                        opts.focused_text_color,
+                    )
+                } else {
+                    (
+                        opts.label_background_color,
+                        opts.label_background_opacity,
+                        opts.label_text_color,
+                    )
+                };
 
-                fixed.put(&label, x as f64, y as f64);
+                let area = gtk4::DrawingArea::new();
+                area.set_size_request(area_w, area_h);
 
-                if client.focused {
-                    label.add_css_class("focused");
-                }
+                let fd = base_font_desc.clone();
+                let letter_for_draw = letter_str.clone();
+                area.set_draw_func(move |_, cr, w, h| {
+                    cr.set_source_rgba(
+                        bg.r as f64 / 255.0,
+                        bg.g as f64 / 255.0,
+                        bg.b as f64 / 255.0,
+                        bg_a,
+                    );
+                    cr.rectangle(0.0, 0.0, w as f64, h as f64);
+                    let _ = cr.fill();
+
+                    cr.set_source_rgba(
+                        fg.r as f64 / 255.0,
+                        fg.g as f64 / 255.0,
+                        fg.b as f64 / 255.0,
+                        1.0,
+                    );
+                    let layout = pangocairo::functions::create_layout(cr);
+                    layout.set_text(&letter_for_draw);
+                    layout.set_font_description(Some(&fd));
+                    cr.move_to(-ink_x as f64, -ink_y as f64);
+                    pangocairo::functions::show_layout(cr, &layout);
+                });
+
+                fixed.put(&area, x as f64, y as f64);
 
                 keys_to_con_ids.insert(letter, client.id);
             }
