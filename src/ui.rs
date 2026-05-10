@@ -213,10 +213,15 @@ fn build_ui(
                 let temp_layout = pango::Layout::new(&temp_ctx);
                 temp_layout.set_text(&letter_str);
                 temp_layout.set_font_description(Some(&base_font_desc));
-                let (ink, _logical) = temp_layout.pixel_extents();
-                let area_w = ink.width().max(1);
-                let area_h = ink.height().max(1);
-                let ink_x = ink.x();
+                let (ink, logical) = temp_layout.pixel_extents();
+                let pad_x = opts.label_padding_x;
+                let pad_y = opts.label_padding_y;
+                // Use logical.width (advance) so monospace glyphs share a
+                // uniform cell width. Use ink.height for a tight vertical
+                // fit so the box hugs the glyph top and bottom.
+                let area_w = logical.width().max(1) + 2 * pad_x;
+                let area_h = ink.height().max(1) + 2 * pad_y;
+                let logical_x = logical.x();
                 let ink_y = ink.y();
 
                 let (bg, bg_a, fg) = if client.focused {
@@ -257,7 +262,10 @@ fn build_ui(
                     let layout = pangocairo::functions::create_layout(cr);
                     layout.set_text(&letter_for_draw);
                     layout.set_font_description(Some(&fd));
-                    cr.move_to(-ink_x as f64, -ink_y as f64);
+                    cr.move_to(
+                        (pad_x - logical_x) as f64,
+                        (pad_y - ink_y) as f64,
+                    );
                     pangocairo::functions::show_layout(cr, &layout);
                 });
 
