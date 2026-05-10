@@ -159,6 +159,10 @@ fn build_ui(
         gtk4_layer_shell::LayerShell::set_anchor(&window, gtk4_layer_shell::Edge::Bottom, true);
         gtk4_layer_shell::LayerShell::set_anchor(&window, gtk4_layer_shell::Edge::Left, true);
         gtk4_layer_shell::LayerShell::set_anchor(&window, gtk4_layer_shell::Edge::Right, true);
+        // Cover the full output, ignoring exclusive zones reserved by bars
+        // and other layer-shell clients. Without this, the overlay's origin
+        // is shifted by the bar height and labels misalign with windows.
+        gtk4_layer_shell::LayerShell::set_exclusive_zone(&window, -1);
 
         let display = gtk4::gdk::Display::default().unwrap();
         let monitors = display.monitors();
